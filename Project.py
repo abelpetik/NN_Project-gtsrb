@@ -1,10 +1,10 @@
 import numpy as np
 import tensorflow as tf
-import pandas as pd
+# import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import cv2
-from PIL import Image
+# import cv2
+# from PIL import Image
 
 
 # Declaration of basic parameters
@@ -19,7 +19,7 @@ try:
     Input_images=np.load("Input_images.npy")
     Input_labels=np.load("Input_labels.npy")
 except FileNotFoundError:
-    print("Numpy files haven't been generated, creating them now.")
+    print("Numpy files haven't been generated, or they are corrupted, creating them now.")
 
     # Lists for containing input training data
     data = []
@@ -47,7 +47,7 @@ except FileNotFoundError:
     np.save("Input_images", Input_images)
     np.save("Input_labels", Input_labels)
 
-print(Input_labels.shape)
+print(Input_images.shape)
 
 # Shuffling the test images to avoid big batches containing images from only one or two classes
 shuffle = np.arange(Input_images.shape[0])
@@ -81,7 +81,7 @@ Test_set = Test_set.reshape(-1, dim_inputs)
 print(Test_set.shape)
 '''
 
-# Defining reset_graph with set seed, to make runs consistent
+# Defining reset_graph with set seed, to make runs consistent for testing
 def reset_graph(seed=num_classes):
     tf.reset_default_graph()
     tf.set_random_seed(seed)
@@ -108,9 +108,10 @@ num_neurons = [32]
 reset_graph()
 
 X_train = tf.placeholder(tf.float32, [None] + input_shape)
+Y_train = tf.placeholder(tf.int32, shape=[None])
 current_input = X_train
 
-print(X_train)
+print(f"Current input shape: {X_train}")
 print(f"kernel size: {conv1_kernel_size + [num_kernels[0], num_kernels[1]]}")
 
 with tf.variable_scope("conv_1"):
@@ -137,17 +138,41 @@ with tf.name_scope("pool3"):
     pool3 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1,], padding="VALID")
     pool3_flat = tf.reshape(pool3, shape=[-1, pool3_feature_maps * 7 * 7])
 
-print(pool3)
-print(pool3_flat)
+print(f"pool3 output: {pool3}")
+print(f"pool3 flat: {pool3_flat}")
 
 print(f"weights size: {[int(pool3_flat.get_shape()[-1]), num_neurons[0]]}")
 
-with tf.name_scope("fully_connected1"):
+with tf.variable_scope("fully_connected1"):
     weights = tf.get_variable('weights', [int(pool3_flat.get_shape()[-1]), num_neurons[0]])
     bias = tf.get_variable('bias', [num_neurons[0]], initializer=tf.constant_initializer(0.0))
 
     result = pool3_flat @ weights
-    result += bias
+    result = tf.add(result, bias)
     result = tf.nn.relu(result)
+    fc1 = result
 
-print(result)
+print(f"Fully connected 1: {fc1}")
+
+with tf.variable_scope("fully_connected2"):
+    weights = tf.get_variable('weigths', [int(fc1.get_shape()[-1]), num_classes])
+    bias = tf.get_variable('bias', [num_classes], initializer=tf.constant_initializer(0.0))
+
+    result = fc1 @ weights
+    result = tf.add(result, bias)
+    output = tf.nn.softmax(result)
+
+print(f"Output: {output}")
+
+with tf.name_scope("Loss"):
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=result, labels=Y_train)
+    loss = tf.reduce_mean(xentropy)
+
+with tf.name_scope("Optimizer"):
+    optimizer = tf.train.AdamOptimizer().minimize(loss)
+
+with tf.name_scope("Accuracy"):
+    predictions = tf.equal(tf.argmax(Y_train, 1), tf.argmax(result, 1))
+    accuracy = tf.reduce_mean(tf.cast(predictions, tf.float32))
+
+
