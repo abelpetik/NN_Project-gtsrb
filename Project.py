@@ -49,7 +49,7 @@ except FileNotFoundError:
 
 print(Input_images.shape)
 
-# Shuffling the test images to avoid big batches containing images from only one or two classes
+# Shuffling the data to avoid big batches containing images from only one or two classes
 shuffle = np.arange(Input_images.shape[0])
 np.random.seed(num_classes)
 np.random.shuffle(shuffle)
@@ -66,20 +66,18 @@ Test_labels = Input_labels[int(0.8*len_data):]
 # Converting values to float between 0 and 1
 Train_set = Train_set.astype('float32')/255
 Test_set = Test_set.astype('float32')/255
-len_train = len(Train_set)
-len_test = len(Test_set)
-print(f"Train set length: {len_train}, Test set length: {len_test}")
+print(f"Train set length: {len(Train_set)}, Test set length: {len(Test_set)}")
+print(f"Train labels shape: {Train_labels.shape}")
 
-'''
 # Reshaping images to one vector containing all the pixels of all layers
 print(Train_set.shape)
-Train_set = Train_set.reshape(-1, dim_inputs)
-print(Train_set.shape)
-print(len(Train_set))
+Train_set_flat = Train_set.reshape(-1, dim_inputs)
+print(Train_set_flat.shape)
+print(len(Train_set_flat))
 
-Test_set = Test_set.reshape(-1, dim_inputs)
-print(Test_set.shape)
-'''
+Test_set_flat = Test_set.reshape(-1, dim_inputs)
+print(Test_set_flat.shape)
+
 
 # Defining reset_graph with set seed, to make runs consistent for testing
 def reset_graph(seed=num_classes):
@@ -106,10 +104,10 @@ num_kernels = [input_shape[-1], 4, 8]
 num_neurons = [32]
 
 reset_graph()
-
-X_train = tf.placeholder(tf.float32, [None] + input_shape)
-Y_train = tf.placeholder(tf.int32, shape=[None])
-current_input = X_train
+with tf.name_scope("inputs"):
+    X_flat = tf.placeholder(tf.float32, [None, dim_inputs])
+    X_train = tf.reshape(X_flat, shape=[-1] + input_shape)
+    Y_train = tf.placeholder(tf.int32, shape=[None])
 
 print(f"Current input shape: {X_train}")
 print(f"kernel size: {conv1_kernel_size + [num_kernels[0], num_kernels[1]]}")
@@ -118,7 +116,7 @@ with tf.variable_scope("conv_1"):
     kernel = tf.get_variable("kernel", conv1_kernel_size + [num_kernels[0], num_kernels[1]])
     bias = tf.get_variable("bias", num_kernels[1])
 
-    conv_result = tf.nn.conv2d(current_input, kernel, strides=conv1_stride, padding=conv1_padding)
+    conv_result = tf.nn.conv2d(X_train, kernel, strides=conv1_stride, padding=conv1_padding)
     biased = tf.add(conv_result, bias)
     conv1 = tf.nn.relu(biased)
 
@@ -171,8 +169,60 @@ with tf.name_scope("Loss"):
 with tf.name_scope("Optimizer"):
     optimizer = tf.train.AdamOptimizer().minimize(loss)
 
+
+print(f"Y_train shape: {Y_train}, result shape: {result}")
 with tf.name_scope("Accuracy"):
-    predictions = tf.equal(tf.argmax(Y_train, 1), tf.argmax(result, 1))
+    # predictions = tf.equal(tf.math.argmax(Y_train, 1), tf.math.argmax(result, 1))
+    predictions = tf.math.in_top_k(result, Y_train, 1)
     accuracy = tf.reduce_mean(tf.cast(predictions, tf.float32))
 
+with tf.name_scope("Init_and_save"):
+    init = tf.global_variables_initializer()
+    saver = tf.train.Saver()
+
+'''
+def get_next_batch(indata, label, batch_length):
+  used_in_batch = random.sample(range(indata.shape[0]), batch_length)
+  batch_x = indata[used_in_batch, :]
+  batch_y = label[used_in_batch]
+
+  return batch_x, batch_y
+'''
+
+def shuffle_batch(input, labels, batch_size):
+    rnd_idx = np.random.permutation(len(input))
+    num_batches = len(input) // batch_size
+    for batch_idx in np.array_split(rnd_idx, num_batches):
+        X_batch, Y_batch = input[batch_idx], labels[batch_idx]
+        yield X_batch, Y_batch
+
+num_epochs = 10
+num_iterations = 1000
+batch_size = 32
+'''
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+
+    for i in range(num_iterations):
+        next_data, next_label = get_next_batch(Train_set, Train_labels, batch_size)
+        _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_train: next_data, Y_train: next_label})
+
+        if i % 200 == 0:
+            print(f"Step: {i}, loss: {l}, accuracy: {acc}")
+
+        if i % 500 == 0:
+            next_testdata, next_testlabel = get_next_batch(Test_set, Test_labels, batch_size)
+            _, ac, out = sess.run([optimizer, accuracy, output], feed_dict={X_train: next_testdata, Y_train: next_testlabel})
+            print(f"Accuracy: {ac}")
+'''
+
+with tf.Session() as sess:
+    sess.run(init)
+    for epoch in range(num_epochs):
+        for next_data, next_label in shuffle_batch(Train_set_flat, Train_labels, batch_size):
+            _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y_train: next_label})
+            # print(f"Accuracy: {acc}, Loss: {l}")
+        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y_train: next_label})
+        acc_test = accuracy.eval(feed_dict={X_flat: Test_set_flat, Y_train: Test_labels})
+        print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
 
