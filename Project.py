@@ -235,7 +235,7 @@ except FileNotFoundError:
     Final_test_labels = labels['ClassId'].values
     data = []
 
-    # path = "./gtsrb-german-traffic-sign/Test/"
+    path = "./gtsrb-german-traffic-sign/Test/"
     # Class = os.listdir(path)
     for f in paths:
         try:
