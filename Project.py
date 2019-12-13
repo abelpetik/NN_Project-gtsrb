@@ -3,8 +3,9 @@ import tensorflow as tf
 # import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import cv2
-from PIL import Image
+from statistics import mean
+# import cv2
+# from PIL import Image
 
 def Load_data():
     # Lists for containing input training data
@@ -200,20 +201,16 @@ with tf.Session() as sess:
     sess.run(init)
     for epoch in range(1, num_epochs+1):
         next = shuffle_batch(X_train_flat, Y_train, batch_size)
+        acc_epoch = []
         for i, (next_data, next_label) in enumerate(next):
             _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y: next_label})
-            # if i % 100 == 0:
-                # acc_train.append(acc)
-                # print(f"Accuracy: {acc}, Loss: {l}")
+            acc_epoch.append(acc)
         acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y: next_label})
-        acc_train.append(acc_batch)
+        acc_train.append(mean(acc_epoch))
         acc_test = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
         acc_val.append(acc_test)
         print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
-
-    # final_prediction = output.eval(feed_dict={ X_flat: Test_set_flat})
-
-# print(f"Final prediction: {final_prediction}")
+    save_state = saver.save(sess, 'my-model', global_step=1)
 
 
 plt.figure(0)
@@ -225,15 +222,14 @@ plt.ylabel('accuracy')
 plt.legend(loc=4)
 plt.show()
 
-# Validation_images, Validation_labels
+# Loading Validation_images, Validation_labels
 try:
-    Validation_images=np.load("Validation_images.npy")
-    Validation_labels=np.load("Validation_labels.npy")
+    Final_test_images=np.load("Validation_images.npy")
+    Final_test_labels=np.load("Validation_labels.npy")
 except FileNotFoundError:
     print("Numpy files haven't been generated for validation sets, or they are corrupted, creating them now.")
 
     data = []
-    labels = []
 
     path = "./gtsrb-german-traffic-sign/Test/"
     Class = os.listdir(path)
@@ -241,17 +237,30 @@ except FileNotFoundError:
         try:
             image = cv2.imread(path + im)
             image_from_array = Image.fromarray(image, 'RGB')
-            size_image = image_from_array.resize((30, 30))
+            size_image = image_from_array.resize((width, height))
             data.append(np.array(size_image))
-            labels.append(i)
+            # labels.append(i)
         except AttributeError:
             print("  ")
 
     print(f"Data length: {len(data)}")
 
-    Validation_images = np.array(data)
-    Validation_labels = np.array(labels)
+    Final_test_images = np.array(data)
+    labels = pd.read_csv("./gtsrb-german-traffic-sign/Test.csv")
+    Final_test_labels = labels['ClassId'].values
 
     # Saving arrays to speed up upcoming runs
-    np.save("Validation_images", Validation_images)
-    np.save("Validation_labels", Validation_labels)
+    np.save("Final test images", Final_test_images)
+    np.save("Final test labels", Final_test_labels)
+
+print(f"Shape of final test images array: {Final_test_images.shape}")
+X_final_test_flat = Final_test_images.reshape(-1, dim_inputs)
+print(Final_test_labels[:10])
+with tf.Session() as sess:
+    sess.run(init)
+    saver = tf.train.Saver()
+    saver.restore(sess, save_state)
+    accasdf = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
+    print(f"Accuracy on small test: {accasdf}")
+    acc_final_test = accuracy.eval(feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels})
+    print(f"Accuracy on test set: {acc_final_test}")
