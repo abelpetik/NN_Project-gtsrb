@@ -3,9 +3,8 @@ import tensorflow as tf
 # import pandas as pd
 import matplotlib.pyplot as plt
 import os
-from scipy.optimize import curve_fit
-# import cv2
-# from PIL import Image
+import cv2
+from PIL import Image
 
 def Load_data():
     # Lists for containing input training data
@@ -69,22 +68,22 @@ Input_labels = Input_labels[shuffle]
 
 # Splitting input data into training and validation sets (I only want to use the test set as the true final test.)
 len_data = len(Input_images)
-Train_set = Input_images[:int(0.8*len_data)]
-Test_set = Input_images[int(0.8*len_data):]
-Train_labels = Input_labels[:int(0.8*len_data)]
-Test_labels = Input_labels[int(0.8*len_data):]
+X_train = Input_images[:int(0.8 * len_data)]
+X_test = Input_images[int(0.8 * len_data):]
+Y_train = Input_labels[:int(0.8 * len_data)]
+Y_test = Input_labels[int(0.8 * len_data):]
 
 # Converting values to float between 0 and 1
-Train_set = Train_set.astype('float32')/255
-Test_set = Test_set.astype('float32')/255
-print(f"Train set length: {len(Train_set)}, Test set length: {len(Test_set)}")
+X_train = X_train.astype('float32') / 255
+X_test = X_test.astype('float32') / 255
+print(f"Train set length: {len(X_train)}, Test set length: {len(X_test)}")
 # print(f"Train labels shape: {Train_labels.shape}")
 
 # Flattening images to one vector containing all the pixels of all layers
-print(f"Train set shape before flattening: {Train_set.shape}")
-Train_set_flat = Train_set.reshape(-1, dim_inputs)
-print(f"Train set shape after flattening: {Train_set_flat.shape}")
-Test_set_flat = Test_set.reshape(-1, dim_inputs)
+print(f"Train set shape before flattening: {X_train.shape}")
+X_train_flat = X_train.reshape(-1, dim_inputs)
+print(f"Train set shape after flattening: {X_train_flat.shape}")
+X_test_flat = X_test.reshape(-1, dim_inputs)
 
 # Defining variables of the network and its layers
 conv1_feature_maps = 4
@@ -100,8 +99,8 @@ conv2_padding = "SAME"
 pool3_feature_maps = conv2_feature_maps
 
 # Unused variables left for easier understandability
-# num_fully_connected1 = 32
-# num_output = 43
+# num_neurons_fully_connected1 = 32
+# num_neurons_output = 43
 
 num_kernels = [input_shape[-1], 4, 8]
 num_neurons = [32, num_classes]
@@ -109,17 +108,17 @@ num_neurons = [32, num_classes]
 reset_graph()
 with tf.name_scope("inputs"):
     X_flat = tf.placeholder(tf.float32, [None, dim_inputs])
-    X_train = tf.reshape(X_flat, shape=[-1] + input_shape)
-    Y_train = tf.placeholder(tf.int32, shape=[None])
+    X = tf.reshape(X_flat, shape=[-1] + input_shape)
+    Y = tf.placeholder(tf.int32, shape=[None])
 
-print(f"Current input shape: {X_train}")
+print(f"Current input shape: {X}")
 print(f"kernel size: {conv1_kernel_size + [num_kernels[0], num_kernels[1]]}")
 
 with tf.variable_scope("conv_1"):
     kernel = tf.get_variable("kernel", conv1_kernel_size + [num_kernels[0], num_kernels[1]])
     bias = tf.get_variable("bias", num_kernels[1])
 
-    conv_result = tf.nn.conv2d(X_train, kernel, strides=conv1_stride, padding=conv1_padding)
+    conv_result = tf.nn.conv2d(X, kernel, strides=conv1_stride, padding=conv1_padding)
     biased = tf.add(conv_result, bias)
     conv1 = tf.nn.relu(biased)
 
@@ -166,17 +165,17 @@ with tf.variable_scope("fully_connected2"):
 print(f"Output: {output}")
 
 with tf.name_scope("Loss"):
-    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=result, labels=Y_train)
+    xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=result, labels=Y)
     loss = tf.reduce_mean(xentropy)
 
 with tf.name_scope("Optimizer"):
     optimizer = tf.train.AdamOptimizer().minimize(loss)
 
 
-print(f"Y_train shape: {Y_train}, result shape: {result}")
+print(f"Y_train shape: {Y}, result shape: {result}")
 with tf.name_scope("Accuracy"):
     # predictions = tf.equal(tf.math.argmax(Y_train, 1), tf.math.argmax(result, 1))
-    predictions = tf.math.in_top_k(result, Y_train, 1)
+    predictions = tf.math.in_top_k(result, Y, 1)
     accuracy = tf.reduce_mean(tf.cast(predictions, tf.float32))
 
 with tf.name_scope("Init_and_save"):
@@ -200,15 +199,15 @@ acc_val = []
 with tf.Session() as sess:
     sess.run(init)
     for epoch in range(1, num_epochs+1):
-        next = shuffle_batch(Train_set_flat, Train_labels, batch_size)
+        next = shuffle_batch(X_train_flat, Y_train, batch_size)
         for i, (next_data, next_label) in enumerate(next):
-            _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y_train: next_label})
+            _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y: next_label})
             # if i % 100 == 0:
                 # acc_train.append(acc)
                 # print(f"Accuracy: {acc}, Loss: {l}")
-        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y_train: next_label})
+        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y: next_label})
         acc_train.append(acc_batch)
-        acc_test = accuracy.eval(feed_dict={X_flat: Test_set_flat, Y_train: Test_labels})
+        acc_test = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
         acc_val.append(acc_test)
         print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
 
