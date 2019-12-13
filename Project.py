@@ -97,7 +97,7 @@ conv2_kernel_size = [3, 3]
 conv2_stride = 2
 conv2_padding = "SAME"
 
-conv3_feature_maps = 32
+conv3_feature_maps = 64
 conv3_kernel_size = [3, 3]
 conv3_stride = 1
 conv3_padding = "SAME"
@@ -163,9 +163,6 @@ print(f"conv3: {conv3}")
 
 with tf.name_scope("pool6"):
     pool6 = tf.nn.max_pool(conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1,], padding="VALID")
-    pool6_flat = tf.reshape(pool6, shape=[-1, conv3_feature_maps * 3 * 3])
-
-print(f"pool6: {pool6_flat}")
 
 with tf.name_scope("drop2"):
     drop_out2 = tf.nn.dropout(pool6, keep_prob)
@@ -182,11 +179,14 @@ with tf.variable_scope("fully_connected1"):
 
 print(f"Fully connected 1: {fc1}")
 
+with tf.name_scope("drop3"):
+    drop_out3 = tf.nn.dropout(fc1, keep_prob)
+
 with tf.variable_scope("fully_connected2"):
-    weights = tf.get_variable('weights', [int(fc1.get_shape()[-1]), num_neurons[1]])
+    weights = tf.get_variable('weights', [int(drop_out3.get_shape()[-1]), num_neurons[1]])
     bias = tf.get_variable('bias', [num_classes], initializer=tf.constant_initializer(0.0))
 
-    result = fc1 @ weights
+    result = drop_out3 @ weights
     result = tf.add(result, bias)
     output = tf.nn.softmax(result)
 
@@ -233,11 +233,10 @@ with tf.Session() as sess:
         for i, (next_data, next_label) in enumerate(next):
             _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y: next_label, keep_prob:0.75})
             acc_epoch.append(acc)
-        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y: next_label, keep_prob:1})
         acc_train.append(mean(acc_epoch))
         acc_test = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test, keep_prob:1})
         acc_val.append(acc_test)
-        print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
+        print(f"{epoch}. Last batch accuracy: {mean(acc_epoch)} Test accuracy: {acc_test}")
     save_state = saver.save(sess, 'my-model', global_step=1)
 
 
