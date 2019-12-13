@@ -87,15 +87,20 @@ print(f"Train set shape after flattening: {X_train_flat.shape}")
 X_test_flat = X_test.reshape(-1, dim_inputs)
 
 # Defining variables of the network and its layers
-conv1_feature_maps = 4
+conv1_feature_maps = 16
 conv1_kernel_size = [5, 5]
 conv1_stride = 1
 conv1_padding = "SAME"
 
-conv2_feature_maps = 8
+conv2_feature_maps = 32
 conv2_kernel_size = [3, 3]
 conv2_stride = 2
 conv2_padding = "SAME"
+
+conv3_feature_maps = 32
+conv3_kernel_size = [3, 3]
+conv3_stride = 1
+conv3_padding = "SAME"
 
 pool3_feature_maps = conv2_feature_maps
 
@@ -103,7 +108,7 @@ pool3_feature_maps = conv2_feature_maps
 # num_neurons_fully_connected1 = 32
 # num_neurons_output = 43
 
-num_kernels = [input_shape[-1], 4, 8]
+num_kernels = [input_shape[-1], conv1_feature_maps, conv2_feature_maps, conv3_feature_maps]
 num_neurons = [32, num_classes]
 
 reset_graph()
@@ -111,6 +116,7 @@ with tf.name_scope("inputs"):
     X_flat = tf.placeholder(tf.float32, [None, dim_inputs])
     X = tf.reshape(X_flat, shape=[-1] + input_shape)
     Y = tf.placeholder(tf.int32, shape=[None])
+    keep_prob = tf.placeholder(tf.float32)
 
 print(f"Current input shape: {X}")
 print(f"kernel size: {conv1_kernel_size + [num_kernels[0], num_kernels[1]]}")
@@ -142,13 +148,34 @@ with tf.name_scope("pool3"):
 print(f"pool3 output: {pool3}")
 print(f"pool3 flat: {pool3_flat}")
 
-print(f"weights size: {[int(pool3_flat.get_shape()[-1]), num_neurons[0]]}")
+with tf.name_scope("drop1"):
+    drop_out1 = tf.nn.dropout(pool3, keep_prob)
+
+
+with tf.variable_scope("conv_3"):
+    kernel = tf.get_variable("kernel", conv3_kernel_size + [num_kernels[2], num_kernels[3]])
+    bias = tf.get_variable("bias", num_kernels[3])
+    conv_result = tf.nn.conv2d(drop_out1, kernel, strides=conv3_stride, padding=conv3_padding)
+    biased = tf.add(conv_result, bias)
+    conv3 = tf.nn.relu(biased)
+
+print(f"conv3: {conv3}")
+
+with tf.name_scope("pool6"):
+    pool6 = tf.nn.max_pool(conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1,], padding="VALID")
+    pool6_flat = tf.reshape(pool6, shape=[-1, conv3_feature_maps * 3 * 3])
+
+print(f"pool6: {pool6_flat}")
+
+with tf.name_scope("drop2"):
+    drop_out2 = tf.nn.dropout(pool6, keep_prob)
+    drop_out2_flat = tf.reshape(drop_out2, shape=[-1, conv3_feature_maps * 3 * 3])
 
 with tf.variable_scope("fully_connected1"):
-    weights = tf.get_variable('weights', [int(pool3_flat.get_shape()[-1]), num_neurons[0]])
+    weights = tf.get_variable('weights', [int(drop_out2_flat.get_shape()[-1]), num_neurons[0]])
     bias = tf.get_variable('bias', [num_neurons[0]], initializer=tf.constant_initializer(0.0))
 
-    result = pool3_flat @ weights
+    result = drop_out2_flat @ weights
     result = tf.add(result, bias)
     result = tf.nn.relu(result)
     fc1 = result
@@ -193,7 +220,7 @@ def shuffle_batch(input, labels, batch_size):
         yield X_batch, Y_batch
 
 num_epochs = 20
-batch_size = 32
+batch_size = 64
 
 acc_train = []
 acc_val = []
@@ -204,11 +231,11 @@ with tf.Session() as sess:
         next = shuffle_batch(X_train_flat, Y_train, batch_size)
         acc_epoch = []
         for i, (next_data, next_label) in enumerate(next):
-            _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y: next_label})
+            _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y: next_label, keep_prob:0.75})
             acc_epoch.append(acc)
-        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y: next_label})
+        acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y: next_label, keep_prob:1})
         acc_train.append(mean(acc_epoch))
-        acc_test = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
+        acc_test = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test, keep_prob:1})
         acc_val.append(acc_test)
         print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
     save_state = saver.save(sess, 'my-model', global_step=1)
@@ -258,21 +285,12 @@ except FileNotFoundError:
 
 print(f"Shape of final test images array: {Final_test_images.shape}")
 X_final_test = Final_test_images.astype('float32') / 255
-plt.imshow(X_test[0,:,:,:])
-plt.show()
-plt.imshow(X_final_test[0,:,:,:])
-plt.show()
 X_final_test_flat = X_final_test.reshape(-1, dim_inputs)
-print(Final_test_labels[0])
+
 with tf.Session() as sess:
     sess.run(init)
     saver = tf.train.Saver()
     saver.restore(sess, save_state)
-    accasdf = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
-    print(f"Accuracy on small test: {accasdf}")
-    prediction = sess.run(output, feed_dict={X_flat: X_test_flat, Y: Y_test})
-    print(prediction[0])
-    acc_final_test = accuracy.eval(feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels})
+
+    acc_final_test = accuracy.eval(feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels, keep_prob:1})
     print(f"Accuracy on test set: {acc_final_test}")
-    prediction = sess.run(output, feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels})
-    print(prediction[0])
