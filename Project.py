@@ -163,6 +163,7 @@ with tf.variable_scope("fully_connected2"):
     result = tf.add(result, bias)
     output = tf.nn.softmax(result)
 
+print(f"Result: {result}")
 print(f"Output: {output}")
 
 with tf.name_scope("Loss"):
@@ -229,13 +230,16 @@ try:
 except FileNotFoundError:
     print("Numpy files haven't been generated for validation sets, or they are corrupted, creating them now.")
 
+    labels = pd.read_csv("./gtsrb-german-traffic-sign/Test.csv")
+    paths = labels['Path'].as_matrix()
+    Final_test_labels = labels['ClassId'].values
     data = []
 
-    path = "./gtsrb-german-traffic-sign/Test/"
-    Class = os.listdir(path)
-    for im in Class:
+    # path = "./gtsrb-german-traffic-sign/Test/"
+    # Class = os.listdir(path)
+    for f in paths:
         try:
-            image = cv2.imread(path + im)
+            image = cv2.imread(path+f.replace('Test/', ''))
             image_from_array = Image.fromarray(image, 'RGB')
             size_image = image_from_array.resize((width, height))
             data.append(np.array(size_image))
@@ -246,21 +250,29 @@ except FileNotFoundError:
     print(f"Data length: {len(data)}")
 
     Final_test_images = np.array(data)
-    labels = pd.read_csv("./gtsrb-german-traffic-sign/Test.csv")
-    Final_test_labels = labels['ClassId'].values
+
 
     # Saving arrays to speed up upcoming runs
     np.save("Final_test_images", Final_test_images)
     np.save("Final_test_labels", Final_test_labels)
 
 print(f"Shape of final test images array: {Final_test_images.shape}")
-X_final_test_flat = Final_test_images.reshape(-1, dim_inputs)
-print(Final_test_labels[:10])
+X_final_test = Final_test_images.astype('float32') / 255
+plt.imshow(X_test[0,:,:,:])
+plt.show()
+plt.imshow(X_final_test[0,:,:,:])
+plt.show()
+X_final_test_flat = X_final_test.reshape(-1, dim_inputs)
+print(Final_test_labels[0])
 with tf.Session() as sess:
     sess.run(init)
     saver = tf.train.Saver()
     saver.restore(sess, save_state)
     accasdf = accuracy.eval(feed_dict={X_flat: X_test_flat, Y: Y_test})
     print(f"Accuracy on small test: {accasdf}")
+    prediction = sess.run(output, feed_dict={X_flat: X_test_flat, Y: Y_test})
+    print(prediction[0])
     acc_final_test = accuracy.eval(feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels})
     print(f"Accuracy on test set: {acc_final_test}")
+    prediction = sess.run(output, feed_dict={X_flat: X_final_test_flat, Y: Final_test_labels})
+    print(prediction[0])
