@@ -225,3 +225,33 @@ plt.ylabel('accuracy')
 plt.legend(loc=4)
 plt.show()
 
+# Validation_images, Validation_labels
+try:
+    Validation_images=np.load("Validation_images.npy")
+    Validation_labels=np.load("Validation_labels.npy")
+except FileNotFoundError:
+    print("Numpy files haven't been generated for validation sets, or they are corrupted, creating them now.")
+
+    data = []
+    labels = []
+
+    path = "./gtsrb-german-traffic-sign/Test/"
+    Class = os.listdir(path)
+    for im in Class:
+        try:
+            image = cv2.imread(path + im)
+            image_from_array = Image.fromarray(image, 'RGB')
+            size_image = image_from_array.resize((30, 30))
+            data.append(np.array(size_image))
+            labels.append(i)
+        except AttributeError:
+            print("  ")
+
+    print(f"Data length: {len(data)}")
+
+    Validation_images = np.array(data)
+    Validation_labels = np.array(labels)
+
+    # Saving arrays to speed up upcoming runs
+    np.save("Validation_images", Validation_images)
+    np.save("Validation_labels", Validation_labels)

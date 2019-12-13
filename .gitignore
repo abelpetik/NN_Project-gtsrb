@@ -4,3 +4,5 @@
 /Function_test.py
 /.idea/misc.xml
 /.idea/NN_Project-gtsrb.iml
+/Validation_images.npy
+/Validation_labels.npy
