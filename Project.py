@@ -3,34 +3,21 @@ import tensorflow as tf
 # import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from scipy.optimize import curve_fit
 # import cv2
 # from PIL import Image
 
-
-# Declaration of basic parameters
-width = 30
-height = 30
-num_channels = 3
-num_classes = 43
-input_shape = [width, height, num_channels]
-dim_inputs = width*height*num_channels
-
-try:
-    Input_images=np.load("Input_images.npy")
-    Input_labels=np.load("Input_labels.npy")
-except FileNotFoundError:
-    print("Numpy files haven't been generated, or they are corrupted, creating them now.")
-
+def Load_data():
     # Lists for containing input training data
     data = []
     labels = []
 
     for i in range(num_classes):
-        path=f"./gtsrb-german-traffic-sign/Train/{i}/"
-        Class=os.listdir(path)
+        path = f"./gtsrb-german-traffic-sign/Train/{i}/"
+        Class = os.listdir(path)
         for im in Class:
             try:
-                image = cv2.imread(path+im)
+                image = cv2.imread(path + im)
                 image_from_array = Image.fromarray(image, 'RGB')
                 size_image = image_from_array.resize((30, 30))
                 data.append(np.array(size_image))
@@ -40,16 +27,40 @@ except FileNotFoundError:
 
     print(f"Data length: {len(data)}")
 
-    Input_images=np.array(data)
-    Input_labels=np.array(labels)
+    Input_images = np.array(data)
+    Input_labels = np.array(labels)
 
     # Saving arrays to speed up upcoming runs
     np.save("Input_images", Input_images)
     np.save("Input_labels", Input_labels)
 
-print(Input_images.shape)
+    return Input_images, Input_labels
 
-# Shuffling the data to avoid big batches containing images from only one or two classes
+# Defining reset_graph with set seed, to make runs consistent for testing
+def reset_graph(seed=42):
+    tf.reset_default_graph()
+    tf.set_random_seed(seed)
+    np.random.seed(seed)
+
+# Declaration of basic parameters
+width = 30
+height = 30
+num_channels = 3
+num_classes = 43
+input_shape = [width, height, num_channels]
+dim_inputs = width*height*num_channels
+
+# Loading data from npy file, or the original images
+try:
+    Input_images=np.load("Input_images.npy")
+    Input_labels=np.load("Input_labels.npy")
+except FileNotFoundError:
+    print("Numpy files haven't been generated, or they are corrupted, creating them now.")
+    Input_images, Input_labels = Load_data()
+
+print(f"Shape of input images array: {Input_images.shape}")
+
+# Shuffling the data before splitting into train and validation sets to avoid them containing images from only one or two classes
 shuffle = np.arange(Input_images.shape[0])
 np.random.seed(num_classes)
 np.random.shuffle(shuffle)
@@ -67,24 +78,15 @@ Test_labels = Input_labels[int(0.8*len_data):]
 Train_set = Train_set.astype('float32')/255
 Test_set = Test_set.astype('float32')/255
 print(f"Train set length: {len(Train_set)}, Test set length: {len(Test_set)}")
-print(f"Train labels shape: {Train_labels.shape}")
+# print(f"Train labels shape: {Train_labels.shape}")
 
-# Reshaping images to one vector containing all the pixels of all layers
-print(Train_set.shape)
+# Flattening images to one vector containing all the pixels of all layers
+print(f"Train set shape before flattening: {Train_set.shape}")
 Train_set_flat = Train_set.reshape(-1, dim_inputs)
-print(Train_set_flat.shape)
-print(len(Train_set_flat))
-
+print(f"Train set shape after flattening: {Train_set_flat.shape}")
 Test_set_flat = Test_set.reshape(-1, dim_inputs)
-print(Test_set_flat.shape)
 
-
-# Defining reset_graph with set seed, to make runs consistent for testing
-def reset_graph(seed=num_classes):
-    tf.reset_default_graph()
-    tf.set_random_seed(seed)
-    np.random.seed(seed)
-
+# Defining variables of the network and its layers
 conv1_feature_maps = 4
 conv1_kernel_size = [5, 5]
 conv1_stride = 1
@@ -97,11 +99,12 @@ conv2_padding = "SAME"
 
 pool3_feature_maps = conv2_feature_maps
 
-num_fully_connected1 = 32
-num_output = num_classes
+# Unused variables left for easier understandability
+# num_fully_connected1 = 32
+# num_output = 43
 
 num_kernels = [input_shape[-1], 4, 8]
-num_neurons = [32]
+num_neurons = [32, num_classes]
 
 reset_graph()
 with tf.name_scope("inputs"):
@@ -153,7 +156,7 @@ with tf.variable_scope("fully_connected1"):
 print(f"Fully connected 1: {fc1}")
 
 with tf.variable_scope("fully_connected2"):
-    weights = tf.get_variable('weigths', [int(fc1.get_shape()[-1]), num_classes])
+    weights = tf.get_variable('weights', [int(fc1.get_shape()[-1]), num_neurons[1]])
     bias = tf.get_variable('bias', [num_classes], initializer=tf.constant_initializer(0.0))
 
     result = fc1 @ weights
@@ -180,14 +183,6 @@ with tf.name_scope("Init_and_save"):
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
 
-'''
-def get_next_batch(indata, label, batch_length):
-  used_in_batch = random.sample(range(indata.shape[0]), batch_length)
-  batch_x = indata[used_in_batch, :]
-  batch_y = label[used_in_batch]
-
-  return batch_x, batch_y
-'''
 
 def shuffle_batch(input, labels, batch_size):
     rnd_idx = np.random.permutation(len(input))
@@ -197,32 +192,37 @@ def shuffle_batch(input, labels, batch_size):
         yield X_batch, Y_batch
 
 num_epochs = 10
-num_iterations = 1000
 batch_size = 32
-'''
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
 
-    for i in range(num_iterations):
-        next_data, next_label = get_next_batch(Train_set, Train_labels, batch_size)
-        _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_train: next_data, Y_train: next_label})
-
-        if i % 200 == 0:
-            print(f"Step: {i}, loss: {l}, accuracy: {acc}")
-
-        if i % 500 == 0:
-            next_testdata, next_testlabel = get_next_batch(Test_set, Test_labels, batch_size)
-            _, ac, out = sess.run([optimizer, accuracy, output], feed_dict={X_train: next_testdata, Y_train: next_testlabel})
-            print(f"Accuracy: {ac}")
-'''
+acc_train = []
+acc_val = []
 
 with tf.Session() as sess:
     sess.run(init)
-    for epoch in range(num_epochs):
-        for next_data, next_label in shuffle_batch(Train_set_flat, Train_labels, batch_size):
+    for epoch in range(1, num_epochs+1):
+        next = shuffle_batch(Train_set_flat, Train_labels, batch_size)
+        for i, (next_data, next_label) in enumerate(next):
             _, l, acc = sess.run([optimizer, loss, accuracy], feed_dict={X_flat: next_data, Y_train: next_label})
-            # print(f"Accuracy: {acc}, Loss: {l}")
+            # if i % 100 == 0:
+                # acc_train.append(acc)
+                # print(f"Accuracy: {acc}, Loss: {l}")
         acc_batch = accuracy.eval(feed_dict={X_flat: next_data, Y_train: next_label})
+        acc_train.append(acc_batch)
         acc_test = accuracy.eval(feed_dict={X_flat: Test_set_flat, Y_train: Test_labels})
+        acc_val.append(acc_test)
         print(f"{epoch}. Last batch accuracy: {acc_batch} Test accuracy: {acc_test}")
+
+    # final_prediction = output.eval(feed_dict={ X_flat: Test_set_flat})
+
+# print(f"Final prediction: {final_prediction}")
+
+
+plt.figure(0)
+plt.plot(acc_train, label='training accuracy')
+plt.plot(acc_val, label='validation accuracy')
+plt.title('Accuracy')
+plt.xlabel('epochs')
+plt.ylabel('accuracy')
+plt.legend(loc=4)
+plt.show()
 
