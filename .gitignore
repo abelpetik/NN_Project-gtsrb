@@ -6,3 +6,5 @@
 /.idea/NN_Project-gtsrb.iml
 /Validation_images.npy
 /Validation_labels.npy
+/Final_test_images.npy
+/Final_test_labels.npy

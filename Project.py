@@ -191,7 +191,7 @@ def shuffle_batch(input, labels, batch_size):
         X_batch, Y_batch = input[batch_idx], labels[batch_idx]
         yield X_batch, Y_batch
 
-num_epochs = 10
+num_epochs = 20
 batch_size = 32
 
 acc_train = []
@@ -224,8 +224,8 @@ plt.show()
 
 # Loading Validation_images, Validation_labels
 try:
-    Final_test_images=np.load("Validation_images.npy")
-    Final_test_labels=np.load("Validation_labels.npy")
+    Final_test_images=np.load("Final_test_images.npy")
+    Final_test_labels=np.load("Final_test_labels.npy")
 except FileNotFoundError:
     print("Numpy files haven't been generated for validation sets, or they are corrupted, creating them now.")
 
@@ -250,8 +250,8 @@ except FileNotFoundError:
     Final_test_labels = labels['ClassId'].values
 
     # Saving arrays to speed up upcoming runs
-    np.save("Final test images", Final_test_images)
-    np.save("Final test labels", Final_test_labels)
+    np.save("Final_test_images", Final_test_images)
+    np.save("Final_test_labels", Final_test_labels)
 
 print(f"Shape of final test images array: {Final_test_images.shape}")
 X_final_test_flat = Final_test_images.reshape(-1, dim_inputs)
